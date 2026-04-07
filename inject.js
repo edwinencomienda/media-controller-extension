@@ -1,12 +1,13 @@
 (function () {
-  let overrideVolume = null;
-  let overrideSpeed = null;
+  var overrideVolume = null;
+  var overrideSpeed = null;
+  var speedApplyAll = true;
 
   var MIN_SPEED = 0.25;
   var MAX_SPEED = 4;
   var SPEED_STEP = 0.25;
 
-  // --- Volume monkey-patch ---
+  // --- Volume monkey-patch (always active) ---
   var volDesc = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, "volume");
   var volOrigSet = volDesc.set;
   var volOrigGet = volDesc.get;
@@ -23,22 +24,36 @@
     enumerable: true,
   });
 
-  // --- PlaybackRate monkey-patch ---
+  // --- PlaybackRate monkey-patch (respects applyAll toggle) ---
   var rateDesc = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, "playbackRate");
   var rateOrigSet = rateDesc.set;
   var rateOrigGet = rateDesc.get;
 
   Object.defineProperty(HTMLMediaElement.prototype, "playbackRate", {
     get: function () {
-      if (overrideSpeed !== null) return overrideSpeed;
+      if (overrideSpeed !== null && speedApplyAll) return overrideSpeed;
       return rateOrigGet.call(this);
     },
     set: function (val) {
-      rateOrigSet.call(this, overrideSpeed !== null ? overrideSpeed : val);
+      if (overrideSpeed !== null && speedApplyAll) {
+        rateOrigSet.call(this, overrideSpeed);
+      } else {
+        rateOrigSet.call(this, val);
+      }
     },
     configurable: true,
     enumerable: true,
   });
+
+  // --- Helper: find the currently playing video ---
+  function getActiveVideo() {
+    var els = document.querySelectorAll("video, audio");
+    for (var i = 0; i < els.length; i++) {
+      if (!els[i].paused) return els[i];
+    }
+    // Fallback to first video if none playing
+    return els[0] || null;
+  }
 
   // --- Speed overlay ---
   var overlayEl = null;
@@ -63,6 +78,24 @@
     }, 800);
   }
 
+  // --- Apply speed based on mode ---
+  function applySpeed(speed) {
+    overrideSpeed = speed;
+    if (speedApplyAll) {
+      // Apply to all media elements
+      var els = document.querySelectorAll("video, audio");
+      for (var i = 0; i < els.length; i++) {
+        rateOrigSet.call(els[i], overrideSpeed);
+      }
+    } else {
+      // Only apply to the currently playing video
+      var active = getActiveVideo();
+      if (active) {
+        rateOrigSet.call(active, overrideSpeed);
+      }
+    }
+  }
+
   // --- Receive from content script ---
   window.addEventListener("__vc_set_volume", function (e) {
     overrideVolume = e.detail.volume;
@@ -73,10 +106,14 @@
   });
 
   window.addEventListener("__vc_set_speed", function (e) {
-    overrideSpeed = e.detail.speed;
-    var els = document.querySelectorAll("video, audio");
-    for (var i = 0; i < els.length; i++) {
-      rateOrigSet.call(els[i], overrideSpeed);
+    applySpeed(e.detail.speed);
+  });
+
+  window.addEventListener("__vc_set_speed_mode", function (e) {
+    speedApplyAll = e.detail.applyAll;
+    // Re-apply current speed with new mode
+    if (overrideSpeed !== null) {
+      applySpeed(overrideSpeed);
     }
   });
 
@@ -99,11 +136,7 @@
     }
 
     if (newSpeed !== undefined) {
-      overrideSpeed = newSpeed;
-      var els = document.querySelectorAll("video, audio");
-      for (var i = 0; i < els.length; i++) {
-        rateOrigSet.call(els[i], overrideSpeed);
-      }
+      applySpeed(newSpeed);
       showSpeedOverlay(overrideSpeed);
       // Tell content script to save
       window.dispatchEvent(new CustomEvent("__vc_speed_changed", { detail: { speed: overrideSpeed } }));

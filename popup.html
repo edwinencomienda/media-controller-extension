@@ -80,6 +80,58 @@
       background: #5a52d5;
     }
 
+    .speed-label {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .toggle {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      cursor: pointer;
+    }
+
+    .toggle input {
+      display: none;
+    }
+
+    .toggle-slider {
+      width: 28px;
+      height: 14px;
+      background: #555;
+      border-radius: 7px;
+      position: relative;
+      transition: background 0.2s;
+    }
+
+    .toggle-slider::after {
+      content: "";
+      position: absolute;
+      width: 10px;
+      height: 10px;
+      background: #ccc;
+      border-radius: 50%;
+      top: 2px;
+      left: 2px;
+      transition: transform 0.2s, background 0.2s;
+    }
+
+    .toggle input:checked + .toggle-slider {
+      background: #6c63ff;
+    }
+
+    .toggle input:checked + .toggle-slider::after {
+      transform: translateX(14px);
+      background: #fff;
+    }
+
+    .toggle-text {
+      font-size: 10px;
+      color: #777;
+    }
+
     .shortcut-hint {
       display: flex;
       justify-content: center;
@@ -109,7 +161,14 @@
     <span id="volume-value">100%</span>
   </div>
   <button id="reset-volume-btn" class="reset-btn">Reset to 100%</button>
-  <div class="label">Speed</div>
+  <div class="label speed-label">
+    <span>Speed</span>
+    <label class="toggle">
+      <input type="checkbox" id="speed-apply-all" checked>
+      <span class="toggle-slider"></span>
+      <span class="toggle-text">Apply to all</span>
+    </label>
+  </div>
   <div class="slider-container">
     <input type="range" id="speed-slider" min="25" max="400" step="25" value="100">
     <span id="speed-value">1.00x</span>
