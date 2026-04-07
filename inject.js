@@ -86,6 +86,8 @@
     if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || e.target.isContentEditable) return;
     if (e.ctrlKey || e.altKey || e.metaKey || e.shiftKey) return;
 
+    if (!document.querySelector("video, audio")) return;
+
     var current, newSpeed;
 
     if (e.key === "d") {
