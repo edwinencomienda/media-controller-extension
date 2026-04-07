@@ -43,4 +43,10 @@ slider.addEventListener("input", () => {
   setVolume(volume);
 });
 
+document.getElementById("reset-btn").addEventListener("click", () => {
+  slider.value = 100;
+  valueDisplay.textContent = "100%";
+  setVolume(100);
+});
+
 loadVolume();
