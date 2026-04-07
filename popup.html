@@ -52,10 +52,20 @@
       color: #6c63ff;
     }
 
-    #reset-btn {
+    .label {
+      font-size: 12px;
+      color: #aaa;
+      margin: 12px 0 6px;
+    }
+
+    .label:first-of-type {
+      margin-top: 0;
+    }
+
+    .reset-btn {
       display: block;
       width: 100%;
-      margin-top: 10px;
+      margin-top: 8px;
       padding: 6px 0;
       border: none;
       border-radius: 4px;
@@ -66,18 +76,49 @@
       cursor: pointer;
     }
 
-    #reset-btn:hover {
+    .reset-btn:hover {
       background: #5a52d5;
+    }
+
+    .shortcut-hint {
+      display: flex;
+      justify-content: center;
+      gap: 14px;
+      margin-top: 8px;
+      font-size: 11px;
+      color: #777;
+    }
+
+    .shortcut-hint kbd {
+      display: inline-block;
+      padding: 1px 5px;
+      border: 1px solid #555;
+      border-radius: 3px;
+      background: #2a2a3e;
+      color: #bbb;
+      font-family: inherit;
+      font-size: 11px;
     }
   </style>
 </head>
 <body>
-  <h3>Volume Controller</h3>
+  <h3>Media Controller</h3>
+  <div class="label">Volume</div>
   <div class="slider-container">
     <input type="range" id="volume-slider" min="0" max="100" value="100">
     <span id="volume-value">100%</span>
   </div>
-  <button id="reset-btn">Reset to 100%</button>
+  <button id="reset-volume-btn" class="reset-btn">Reset to 100%</button>
+  <div class="label">Speed</div>
+  <div class="slider-container">
+    <input type="range" id="speed-slider" min="25" max="400" step="25" value="100">
+    <span id="speed-value">1.00x</span>
+  </div>
+  <button id="reset-speed-btn" class="reset-btn">Reset to 1x</button>
+  <div class="shortcut-hint">
+    <span><kbd>S</kbd> slow down</span>
+    <span><kbd>D</kbd> speed up</span>
+  </div>
   <script src="popup.js"></script>
 </body>
 </html>

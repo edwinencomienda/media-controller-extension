@@ -1,30 +1,45 @@
-// Content script (isolated world) — handles storage + messaging.
-// The actual volume override happens in inject.js (main world).
+// Content script — handles storage + messaging.
+// Communicates with inject.js (main world) via CustomEvent.
 
-function sendVolumeToPage(volume) {
-  window.dispatchEvent(
-    new CustomEvent("__vc_set_volume", { detail: { volume } })
-  );
+function sendVolume(volume) {
+  window.dispatchEvent(new CustomEvent("__vc_set_volume", { detail: { volume: volume } }));
 }
 
-// Listen for volume changes from popup
-chrome.runtime.onMessage.addListener((message) => {
+function sendSpeed(speed) {
+  window.dispatchEvent(new CustomEvent("__vc_set_speed", { detail: { speed: speed } }));
+}
+
+chrome.runtime.onMessage.addListener(function (message) {
   if (message.type === "SET_VOLUME") {
-    sendVolumeToPage(message.volume);
+    sendVolume(message.volume);
+  }
+  if (message.type === "SET_SPEED") {
+    sendSpeed(message.speed);
   }
 });
 
-// YouTube SPA navigation — re-enforce
-document.addEventListener("yt-navigate-finish", () => {
+// Persist speed from keyboard shortcuts
+window.addEventListener("__vc_speed_changed", function (e) {
+  var origin = window.location.origin;
+  var speed = Math.round(e.detail.speed * 100);
+  chrome.storage.local.set({ [origin + ":speed"]: speed });
+});
+
+document.addEventListener("yt-navigate-finish", function () {
   loadAndApply();
 });
 
-async function loadAndApply() {
-  const origin = window.location.origin;
-  const result = await chrome.storage.local.get(origin);
-  if (result[origin] !== undefined) {
-    sendVolumeToPage(result[origin] / 100);
-  }
+function loadAndApply() {
+  var origin = window.location.origin;
+  chrome.storage.local.get([origin + ":volume", origin + ":speed"], function (result) {
+    var volume = result[origin + ":volume"];
+    if (volume === undefined) volume = 100;
+    sendVolume(volume / 100);
+
+    var speed = result[origin + ":speed"];
+    if (speed === undefined) speed = 100;
+    sendSpeed(speed / 100);
+  });
 }
 
 loadAndApply();
