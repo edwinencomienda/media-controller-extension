@@ -7,6 +7,7 @@ function sendVolume(volume) {
 
 function sendSpeed(speed) {
   window.dispatchEvent(new CustomEvent("__vc_set_speed", { detail: { speed: speed } }));
+  chrome.runtime.sendMessage({ type: "UPDATE_BADGE", speed: speed });
 }
 
 chrome.runtime.onMessage.addListener(function (message) {
@@ -23,6 +24,7 @@ window.addEventListener("__vc_speed_changed", function (e) {
   var origin = window.location.origin;
   var speed = Math.round(e.detail.speed * 100);
   chrome.storage.local.set({ [origin + ":speed"]: speed });
+  chrome.runtime.sendMessage({ type: "UPDATE_BADGE", speed: e.detail.speed });
 });
 
 document.addEventListener("yt-navigate-finish", function () {
