@@ -6,8 +6,10 @@ A Chrome extension that controls the volume and playback speed of all videos/aud
 
 - **Volume Slider** — Set volume from 0% to 100% via the popup
 - **Speed Slider** — Set playback speed from 0.25x to 4x via the popup
-- **Keyboard Shortcuts** — Press `S` to slow down, `D` to speed up (0.25x increments)
-- **Speed Overlay** — Translucent overlay appears in the center of the page showing the current speed when changed via keyboard
+- **Keyboard Shortcuts** — Quick adjustments without opening the popup:
+  - **Speed**: Press `S` to slow down, `D` to speed up (0.25x increments)
+  - **Volume**: Press `W` to decrease, `E` to increase (5% increments)
+- **Visual Overlays** — Translucent overlay appears in the center of the page showing current speed or volume when changed via keyboard
 - **Per-Site Persistence** — Volume and speed settings are saved per-origin and restored on page load
 - **SPA Support** — Works across YouTube video navigation without needing a page refresh
 - **Reset Buttons** — Quickly reset volume to 100% or speed to 1x
@@ -57,12 +59,13 @@ Injected Script (inject.js) — main world
 Page audio is controlled
 ```
 
-For keyboard shortcuts (speed only), the flow is reversed for persistence:
+For keyboard shortcuts, the flow is reversed for persistence:
 
 ```
-inject.js (keydown → change speed)
+inject.js (keydown → change speed/volume)
   │
   │  window.dispatchEvent(new CustomEvent("__vc_speed_changed", { detail: { speed: 1.5 } }))
+  │  window.dispatchEvent(new CustomEvent("__vc_volume_changed", { detail: { volume: 0.75 } }))
   ▼
 content.js (receives event → saves to chrome.storage.local)
 ```
@@ -95,10 +98,12 @@ YouTube is a Single Page Application — clicking a video doesn't reload the pag
 
 ### Keyboard Shortcuts
 
-| Key | Action | Range |
-|-----|--------|-------|
-| `S` | Decrease speed by 0.25x | Min: 0.25x |
-| `D` | Increase speed by 0.25x | Max: 4.00x |
+| Key | Action | Step | Range |
+|-----|--------|------|-------|
+| `S` | Decrease speed | 0.25x | Min: 0.25x |
+| `D` | Increase speed | 0.25x | Max: 4.00x |
+| `W` | Decrease volume | 5% | Min: 0% |
+| `E` | Increase volume | 5% | Max: 100% |
 
 Shortcuts are **disabled** when:
 - Focus is on an `<input>`, `<textarea>`, `<select>`, or `contenteditable` element
@@ -106,11 +111,13 @@ Shortcuts are **disabled** when:
 
 This prevents conflicts with the page's own keyboard shortcuts (e.g., YouTube's search bar).
 
+When using keyboard shortcuts, a translucent overlay appears in the center of the page showing the current value.
+
 ## Important Technical Notes
 
 ### Cross-World Communication
 
-- **Use `CustomEvent` with separate named events** (e.g., `__vc_set_volume`, `__vc_set_speed`). Combined events with complex `detail` objects were unreliable across worlds.
+- **Use `CustomEvent` with separate named events** (e.g., `__vc_set_volume`, `__vc_set_speed`, `__vc_volume_changed`, `__vc_speed_changed`). Combined events with complex `detail` objects were unreliable across worlds.
 - **Use callback-style** `chrome.storage.local.get(keys, callback)` instead of `async/await` in the content script for reliability.
 - **Use `var` and `function` declarations** in `inject.js` (main world) for maximum compatibility — the script runs in the page's JS context which may have strict CSP rules.
 
@@ -119,4 +126,4 @@ This prevents conflicts with the page's own keyboard shortcuts (e.g., YouTube's 
 1. **After reloading the extension**, you must refresh any open tabs for the content scripts to re-inject.
 2. **`world: "MAIN"` requires Chrome 111+**. For older Chrome versions, inject.js would need to be loaded via `<script>` tag injection from content.js with `web_accessible_resources`.
 3. **Do NOT use `window.postMessage`** for cross-world communication — while it works in theory, it mixes with the page's own messages and can be unreliable.
-4. **Do NOT combine event types into a single CustomEvent** — using separate events per action (`__vc_set_volume`, `__vc_set_speed`) proved more reliable than a single `__vc_set` event with a `type` field in the detail.
+4. **Do NOT combine event types into a single CustomEvent** — using separate events per action (`__vc_set_volume`, `__vc_set_speed`, `__vc_volume_changed`, `__vc_speed_changed`) proved more reliable than a single `__vc_set` event with a `type` field in the detail.

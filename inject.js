@@ -7,6 +7,10 @@
   var MAX_SPEED = 4;
   var SPEED_STEP = 0.25;
 
+  var MIN_VOLUME = 0;
+  var MAX_VOLUME = 1;
+  var VOLUME_STEP = 0.05;
+
   // --- Volume monkey-patch (always active) ---
   var volDesc = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, "volume");
   var volOrigSet = volDesc.set;
@@ -56,25 +60,48 @@
   }
 
   // --- Speed overlay ---
-  var overlayEl = null;
-  var overlayTimeout = null;
+  var speedOverlayEl = null;
+  var speedOverlayTimeout = null;
 
   function showSpeedOverlay(speed) {
-    if (!overlayEl) {
-      overlayEl = document.createElement("div");
-      overlayEl.style.cssText =
+    if (!speedOverlayEl) {
+      speedOverlayEl = document.createElement("div");
+      speedOverlayEl.style.cssText =
         "position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);" +
         "background:rgba(0,0,0,0.7);color:#fff;font-size:28px;font-weight:700;" +
         "padding:14px 28px;border-radius:10px;z-index:2147483647;" +
         "pointer-events:none;font-family:-apple-system,BlinkMacSystemFont,sans-serif;" +
         "transition:opacity 0.3s;opacity:0;";
-      document.documentElement.appendChild(overlayEl);
+      document.documentElement.appendChild(speedOverlayEl);
     }
-    overlayEl.textContent = speed.toFixed(2) + "x";
-    overlayEl.style.opacity = "1";
-    clearTimeout(overlayTimeout);
-    overlayTimeout = setTimeout(function () {
-      overlayEl.style.opacity = "0";
+    speedOverlayEl.textContent = speed.toFixed(2) + "x";
+    speedOverlayEl.style.opacity = "1";
+    clearTimeout(speedOverlayTimeout);
+    speedOverlayTimeout = setTimeout(function () {
+      speedOverlayEl.style.opacity = "0";
+    }, 800);
+  }
+
+  // --- Volume overlay ---
+  var volumeOverlayEl = null;
+  var volumeOverlayTimeout = null;
+
+  function showVolumeOverlay(volume) {
+    if (!volumeOverlayEl) {
+      volumeOverlayEl = document.createElement("div");
+      volumeOverlayEl.style.cssText =
+        "position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);" +
+        "background:rgba(0,0,0,0.7);color:#fff;font-size:28px;font-weight:700;" +
+        "padding:14px 28px;border-radius:10px;z-index:2147483647;" +
+        "pointer-events:none;font-family:-apple-system,BlinkMacSystemFont,sans-serif;" +
+        "transition:opacity 0.3s;opacity:0;";
+      document.documentElement.appendChild(volumeOverlayEl);
+    }
+    volumeOverlayEl.textContent = Math.round(volume * 100) + "%";
+    volumeOverlayEl.style.opacity = "1";
+    clearTimeout(volumeOverlayTimeout);
+    volumeOverlayTimeout = setTimeout(function () {
+      volumeOverlayEl.style.opacity = "0";
     }, 800);
   }
 
@@ -125,8 +152,9 @@
 
     if (!document.querySelector("video, audio")) return;
 
-    var current, newSpeed;
+    var current, newSpeed, newVolume;
 
+    // Speed shortcuts
     if (e.key === "d") {
       current = overrideSpeed || 1;
       newSpeed = Math.min(MAX_SPEED, Math.round((current + SPEED_STEP) * 100) / 100);
@@ -135,11 +163,32 @@
       newSpeed = Math.max(MIN_SPEED, Math.round((current - SPEED_STEP) * 100) / 100);
     }
 
+    // Volume shortcuts
+    if (e.key === "e") {
+      current = overrideVolume !== null ? overrideVolume : 1;
+      newVolume = Math.min(MAX_VOLUME, Math.round((current + VOLUME_STEP) * 100) / 100);
+    } else if (e.key === "w") {
+      current = overrideVolume !== null ? overrideVolume : 1;
+      newVolume = Math.max(MIN_VOLUME, Math.round((current - VOLUME_STEP) * 100) / 100);
+    }
+
     if (newSpeed !== undefined) {
       applySpeed(newSpeed);
       showSpeedOverlay(overrideSpeed);
       // Tell content script to save
       window.dispatchEvent(new CustomEvent("__vc_speed_changed", { detail: { speed: overrideSpeed } }));
+    }
+
+    if (newVolume !== undefined) {
+      overrideVolume = newVolume;
+      // Apply to all media elements
+      var els = document.querySelectorAll("video, audio");
+      for (var i = 0; i < els.length; i++) {
+        volOrigSet.call(els[i], overrideVolume);
+      }
+      showVolumeOverlay(overrideVolume);
+      // Tell content script to save
+      window.dispatchEvent(new CustomEvent("__vc_volume_changed", { detail: { volume: overrideVolume } }));
     }
   });
 })();

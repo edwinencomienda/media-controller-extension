@@ -151,6 +151,19 @@
       font-family: inherit;
       font-size: 11px;
     }
+
+    .shortcut-section {
+      margin-top: 10px;
+      padding-top: 10px;
+      border-top: 1px solid #333;
+    }
+
+    .shortcut-section-title {
+      font-size: 10px;
+      color: #666;
+      text-align: center;
+      margin-bottom: 4px;
+    }
   </style>
 </head>
 <body>
@@ -174,9 +187,19 @@
     <span id="speed-value">1.00x</span>
   </div>
   <button id="reset-speed-btn" class="reset-btn">Reset to 1x</button>
-  <div class="shortcut-hint">
-    <span><kbd>S</kbd> slow down</span>
-    <span><kbd>D</kbd> speed up</span>
+  <div class="shortcut-section">
+    <div class="shortcut-section-title">Speed</div>
+    <div class="shortcut-hint">
+      <span><kbd>S</kbd> slow down</span>
+      <span><kbd>D</kbd> speed up</span>
+    </div>
+  </div>
+  <div class="shortcut-section">
+    <div class="shortcut-section-title">Volume</div>
+    <div class="shortcut-hint">
+      <span><kbd>W</kbd> down</span>
+      <span><kbd>E</kbd> up</span>
+    </div>
   </div>
   <script src="popup.js"></script>
 </body>

@@ -34,6 +34,13 @@ window.addEventListener("__vc_speed_changed", function (e) {
   chrome.runtime.sendMessage({ type: "UPDATE_BADGE", speed: e.detail.speed });
 });
 
+// Persist volume from keyboard shortcuts
+window.addEventListener("__vc_volume_changed", function (e) {
+  var origin = window.location.origin;
+  var volume = Math.round(e.detail.volume * 100);
+  chrome.storage.local.set({ [origin + ":volume"]: volume });
+});
+
 document.addEventListener("yt-navigate-finish", function () {
   loadAndApply();
 });
