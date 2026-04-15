@@ -123,6 +123,66 @@
     }
   }
 
+  // --- Apply current overrides to a single media element ---
+  function applyOverridesTo(el) {
+    if (!el || (el.tagName !== "VIDEO" && el.tagName !== "AUDIO")) return;
+    if (overrideVolume !== null) {
+      volOrigSet.call(el, overrideVolume);
+    }
+    if (overrideSpeed !== null && speedApplyAll) {
+      rateOrigSet.call(el, overrideSpeed);
+    }
+  }
+
+  // --- Watch for dynamically-added media (e.g. "Show demo" buttons) ---
+  function scanSubtree(node) {
+    if (!node) return;
+    if (node.nodeType !== 1) return; // Element nodes only
+    if (node.tagName === "VIDEO" || node.tagName === "AUDIO") {
+      applyOverridesTo(node);
+    }
+    if (node.querySelectorAll) {
+      var nested = node.querySelectorAll("video, audio");
+      for (var i = 0; i < nested.length; i++) {
+        applyOverridesTo(nested[i]);
+      }
+    }
+  }
+
+  var mediaObserver = new MutationObserver(function (mutations) {
+    for (var i = 0; i < mutations.length; i++) {
+      var added = mutations[i].addedNodes;
+      for (var j = 0; j < added.length; j++) {
+        scanSubtree(added[j]);
+      }
+    }
+  });
+
+  function startObserving() {
+    mediaObserver.observe(document.documentElement || document, {
+      childList: true,
+      subtree: true,
+    });
+  }
+  startObserving();
+
+  // Safety net: catch media that finishes loading after insertion.
+  // Some sites swap `src` on an existing element rather than insert a new one.
+  document.addEventListener(
+    "loadedmetadata",
+    function (e) {
+      applyOverridesTo(e.target);
+    },
+    true
+  );
+  document.addEventListener(
+    "play",
+    function (e) {
+      applyOverridesTo(e.target);
+    },
+    true
+  );
+
   // --- Receive from content script ---
   window.addEventListener("__vc_set_volume", function (e) {
     overrideVolume = e.detail.volume;
