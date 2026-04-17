@@ -19,6 +19,10 @@ function sendSpeedMode(applyAll) {
   window.dispatchEvent(new CustomEvent("__vc_set_speed_mode", { detail: { applyAll: applyAll } }));
 }
 
+function sendSuppressSiteShortcuts(enabled) {
+  window.dispatchEvent(new CustomEvent("__vc_set_suppress_site_shortcuts", { detail: { enabled: enabled } }));
+}
+
 // Broadcast settings to all child iframes (cross-origin safe via postMessage).
 function broadcastToFrames(payload) {
   var iframes = document.querySelectorAll("iframe");
@@ -33,6 +37,7 @@ function applyPayload(payload) {
   if (payload.volume !== undefined) sendVolume(payload.volume);
   if (payload.applyAll !== undefined) sendSpeedMode(payload.applyAll);
   if (payload.speed !== undefined) sendSpeed(payload.speed);
+  if (payload.suppressSiteShortcuts !== undefined) sendSuppressSiteShortcuts(payload.suppressSiteShortcuts);
 }
 
 chrome.runtime.onMessage.addListener(function (message) {
@@ -48,6 +53,10 @@ chrome.runtime.onMessage.addListener(function (message) {
   if (message.type === "SET_SPEED_MODE") {
     sendSpeedMode(message.applyAll);
     payload.applyAll = message.applyAll;
+  }
+  if (message.type === "SET_SUPPRESS_SITE_SHORTCUTS") {
+    sendSuppressSiteShortcuts(message.enabled);
+    payload.suppressSiteShortcuts = message.enabled;
   }
   // Propagate to iframes so embedded players (YouTube, Vimeo, etc.) update too.
   if (IS_TOP_FRAME) broadcastToFrames(payload);
@@ -78,7 +87,7 @@ window.addEventListener("message", function (e) {
     // Child frame is asking for the top-frame's current settings.
     if (e.data.request === "settings") {
       var origin = window.location.origin;
-      chrome.storage.local.get([origin + ":volume", origin + ":speed", "speedApplyAll"], function (result) {
+      chrome.storage.local.get([origin + ":volume", origin + ":speed", "speedApplyAll", "suppressSiteShortcuts"], function (result) {
         var volume = result[origin + ":volume"];
         if (volume === undefined) volume = 100;
         var applyAll = result.speedApplyAll !== false;
@@ -88,6 +97,7 @@ window.addEventListener("message", function (e) {
           volume: volume / 100,
           applyAll: applyAll,
           speed: applyAll ? speed / 100 : 1,
+          suppressSiteShortcuts: result.suppressSiteShortcuts !== false,
         };
         try {
           e.source.postMessage({ __vc: true, payload: payload }, "*");
@@ -146,13 +156,16 @@ function loadAndApply() {
   }
 
   var origin = window.location.origin;
-  chrome.storage.local.get([origin + ":volume", origin + ":speed", "speedApplyAll"], function (result) {
+  chrome.storage.local.get([origin + ":volume", origin + ":speed", "speedApplyAll", "suppressSiteShortcuts"], function (result) {
     var volume = result[origin + ":volume"];
     if (volume === undefined) volume = 100;
     sendVolume(volume / 100);
 
     var applyAll = result.speedApplyAll !== false;
     sendSpeedMode(applyAll);
+
+    var suppress = result.suppressSiteShortcuts !== false;
+    sendSuppressSiteShortcuts(suppress);
 
     var speed;
     if (applyAll) {
@@ -170,6 +183,7 @@ function loadAndApply() {
       volume: volume / 100,
       applyAll: applyAll,
       speed: applyAll ? speed / 100 : 1,
+      suppressSiteShortcuts: suppress,
     });
   });
 }

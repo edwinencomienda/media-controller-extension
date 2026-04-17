@@ -3,6 +3,7 @@ var volumeDisplay = document.getElementById("volume-value");
 var speedSlider = document.getElementById("speed-slider");
 var speedDisplay = document.getElementById("speed-value");
 var speedApplyAll = document.getElementById("speed-apply-all");
+var suppressSiteShortcuts = document.getElementById("suppress-site-shortcuts");
 
 function getTab(callback) {
   chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
@@ -119,6 +120,23 @@ chrome.storage.onChanged.addListener(function (changes) {
   });
 });
 
+function loadSuppressSiteShortcuts() {
+  chrome.storage.local.get("suppressSiteShortcuts", function (result) {
+    var enabled = result.suppressSiteShortcuts !== false; // default true
+    suppressSiteShortcuts.checked = enabled;
+  });
+}
+
+suppressSiteShortcuts.addEventListener("change", function () {
+  var enabled = suppressSiteShortcuts.checked;
+  chrome.storage.local.set({ suppressSiteShortcuts: enabled });
+  getTab(function (tab) {
+    if (!tab || !tab.id) return;
+    chrome.tabs.sendMessage(tab.id, { type: "SET_SUPPRESS_SITE_SHORTCUTS", enabled: enabled }).catch(function () {});
+  });
+});
+
 loadVolume();
 loadSpeed();
 loadApplyAll();
+loadSuppressSiteShortcuts();

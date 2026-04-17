@@ -2,6 +2,7 @@
   var overrideVolume = null;
   var overrideSpeed = null;
   var speedApplyAll = true;
+  var suppressSiteShortcuts = true;
 
   var MIN_SPEED = 0.25;
   var MAX_SPEED = 4;
@@ -204,13 +205,37 @@
     }
   });
 
+  window.addEventListener("__vc_set_suppress_site_shortcuts", function (e) {
+    suppressSiteShortcuts = e.detail.enabled;
+  });
+
   // --- Keyboard shortcuts ---
+  var HANDLED_KEYS = { d: 1, s: 1, e: 1, w: 1 };
+
   document.addEventListener("keydown", function (e) {
     var tag = e.target.tagName;
     if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || e.target.isContentEditable) return;
     if (e.ctrlKey || e.altKey || e.metaKey || e.shiftKey) return;
 
-    if (!document.querySelector("video, audio")) return;
+    if (!HANDLED_KEYS[e.key]) return;
+
+    var els = document.querySelectorAll("video, audio");
+    if (!els.length) return;
+
+    var isPlaying = false;
+    for (var k = 0; k < els.length; k++) {
+      if (!els[k].paused && !els[k].ended) {
+        isPlaying = true;
+        break;
+      }
+    }
+
+    if (suppressSiteShortcuts && isPlaying) {
+      e.stopImmediatePropagation();
+      e.preventDefault();
+    }
+
+    if (!isPlaying) return;
 
     var current, newSpeed, newVolume;
 
@@ -250,5 +275,5 @@
       // Tell content script to save
       window.dispatchEvent(new CustomEvent("__vc_volume_changed", { detail: { volume: overrideVolume } }));
     }
-  });
+  }, true);
 })();
