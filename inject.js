@@ -1,4 +1,5 @@
 (function () {
+  var siteEnabled = true; // Default: enabled
   var overrideVolume = null;
   var overrideSpeed = null;
   var speedApplyAll = true;
@@ -12,35 +13,36 @@
   var MAX_VOLUME = 1;
   var VOLUME_STEP = 0.05;
 
-  // --- Volume monkey-patch (always active) ---
+  // Store original descriptors
   var volDesc = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, "volume");
   var volOrigSet = volDesc.set;
   var volOrigGet = volDesc.get;
 
+  var rateDesc = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, "playbackRate");
+  var rateOrigSet = rateDesc.set;
+  var rateOrigGet = rateDesc.get;
+
+  // --- Volume monkey-patch (respects enabled state) ---
   Object.defineProperty(HTMLMediaElement.prototype, "volume", {
     get: function () {
-      if (overrideVolume !== null) return overrideVolume;
+      if (siteEnabled && overrideVolume !== null) return overrideVolume;
       return volOrigGet.call(this);
     },
     set: function (val) {
-      volOrigSet.call(this, overrideVolume !== null ? overrideVolume : val);
+      volOrigSet.call(this, siteEnabled && overrideVolume !== null ? overrideVolume : val);
     },
     configurable: true,
     enumerable: true,
   });
 
-  // --- PlaybackRate monkey-patch (respects applyAll toggle) ---
-  var rateDesc = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, "playbackRate");
-  var rateOrigSet = rateDesc.set;
-  var rateOrigGet = rateDesc.get;
-
+  // --- PlaybackRate monkey-patch (respects enabled state and applyAll toggle) ---
   Object.defineProperty(HTMLMediaElement.prototype, "playbackRate", {
     get: function () {
-      if (overrideSpeed !== null && speedApplyAll) return overrideSpeed;
+      if (siteEnabled && overrideSpeed !== null && speedApplyAll) return overrideSpeed;
       return rateOrigGet.call(this);
     },
     set: function (val) {
-      if (overrideSpeed !== null && speedApplyAll) {
+      if (siteEnabled && overrideSpeed !== null && speedApplyAll) {
         rateOrigSet.call(this, overrideSpeed);
       } else {
         rateOrigSet.call(this, val);
@@ -52,6 +54,7 @@
 
   // --- Helper: find the currently playing video ---
   function getActiveVideo() {
+    if (!siteEnabled) return null;
     var els = document.querySelectorAll("video, audio");
     for (var i = 0; i < els.length; i++) {
       if (!els[i].paused) return els[i];
@@ -65,6 +68,7 @@
   var speedOverlayTimeout = null;
 
   function showSpeedOverlay(speed) {
+    if (!siteEnabled) return;
     if (!speedOverlayEl) {
       speedOverlayEl = document.createElement("div");
       speedOverlayEl.style.cssText =
@@ -88,6 +92,7 @@
   var volumeOverlayTimeout = null;
 
   function showVolumeOverlay(volume) {
+    if (!siteEnabled) return;
     if (!volumeOverlayEl) {
       volumeOverlayEl = document.createElement("div");
       volumeOverlayEl.style.cssText =
@@ -108,6 +113,7 @@
 
   // --- Apply speed based on mode ---
   function applySpeed(speed) {
+    if (!siteEnabled) return;
     overrideSpeed = speed;
     if (speedApplyAll) {
       // Apply to all media elements
@@ -126,7 +132,7 @@
 
   // --- Apply current overrides to a single media element ---
   function applyOverridesTo(el) {
-    if (!el || (el.tagName !== "VIDEO" && el.tagName !== "AUDIO")) return;
+    if (!siteEnabled || !el || (el.tagName !== "VIDEO" && el.tagName !== "AUDIO")) return;
     if (overrideVolume !== null) {
       volOrigSet.call(el, overrideVolume);
     }
@@ -137,7 +143,7 @@
 
   // --- Watch for dynamically-added media (e.g. "Show demo" buttons) ---
   function scanSubtree(node) {
-    if (!node) return;
+    if (!siteEnabled || !node) return;
     if (node.nodeType !== 1) return; // Element nodes only
     if (node.tagName === "VIDEO" || node.tagName === "AUDIO") {
       applyOverridesTo(node);
@@ -151,6 +157,7 @@
   }
 
   var mediaObserver = new MutationObserver(function (mutations) {
+    if (!siteEnabled) return;
     for (var i = 0; i < mutations.length; i++) {
       var added = mutations[i].addedNodes;
       for (var j = 0; j < added.length; j++) {
@@ -185,7 +192,42 @@
   );
 
   // --- Receive from content script ---
+  window.addEventListener("__vc_set_site_enabled", function (e) {
+    var newEnabled = e.detail.enabled;
+    if (siteEnabled === newEnabled) return; // No change
+    
+    siteEnabled = newEnabled;
+    
+    if (siteEnabled) {
+      // Re-apply overrides when re-enabling
+      if (overrideVolume !== null) {
+        var volEls = document.querySelectorAll("video, audio");
+        for (var i = 0; i < volEls.length; i++) {
+          volOrigSet.call(volEls[i], overrideVolume);
+        }
+      }
+      if (overrideSpeed !== null) {
+        applySpeed(overrideSpeed);
+      }
+    } else {
+      // When disabling, restore original values to all media elements
+      var allMedia = document.querySelectorAll("video, audio");
+      for (var j = 0; j < allMedia.length; j++) {
+        var media = allMedia[j];
+        // Restore volume to actual stored value
+        var actualVolume = volOrigGet.call(media);
+        volOrigSet.call(media, actualVolume);
+        // Restore speed to 1
+        rateOrigSet.call(media, 1);
+      }
+      // Hide any overlays
+      if (speedOverlayEl) speedOverlayEl.style.opacity = "0";
+      if (volumeOverlayEl) volumeOverlayEl.style.opacity = "0";
+    }
+  });
+
   window.addEventListener("__vc_set_volume", function (e) {
+    if (!siteEnabled) return;
     overrideVolume = e.detail.volume;
     var els = document.querySelectorAll("video, audio");
     for (var i = 0; i < els.length; i++) {
@@ -194,13 +236,14 @@
   });
 
   window.addEventListener("__vc_set_speed", function (e) {
+    if (!siteEnabled) return;
     applySpeed(e.detail.speed);
   });
 
   window.addEventListener("__vc_set_speed_mode", function (e) {
     speedApplyAll = e.detail.applyAll;
     // Re-apply current speed with new mode
-    if (overrideSpeed !== null) {
+    if (siteEnabled && overrideSpeed !== null) {
       applySpeed(overrideSpeed);
     }
   });
@@ -213,6 +256,9 @@
   var HANDLED_KEYS = { d: 1, s: 1, e: 1, w: 1 };
 
   document.addEventListener("keydown", function (e) {
+    // If disabled, don't handle any shortcuts
+    if (!siteEnabled) return;
+    
     var tag = e.target.tagName;
     if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || e.target.isContentEditable) return;
     if (e.ctrlKey || e.altKey || e.metaKey || e.shiftKey) return;
@@ -258,7 +304,8 @@
     }
 
     if (newSpeed !== undefined) {
-      applySpeed(newSpeed);
+      overrideSpeed = newSpeed;
+      applySpeed(overrideSpeed);
       showSpeedOverlay(overrideSpeed);
       // Tell content script to save
       window.dispatchEvent(new CustomEvent("__vc_speed_changed", { detail: { speed: overrideSpeed } }));

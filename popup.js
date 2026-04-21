@@ -4,6 +4,13 @@ var speedSlider = document.getElementById("speed-slider");
 var speedDisplay = document.getElementById("speed-value");
 var speedApplyAll = document.getElementById("speed-apply-all");
 var suppressSiteShortcuts = document.getElementById("suppress-site-shortcuts");
+var siteEnabledToggle = document.getElementById("site-enabled");
+var currentSiteSpan = document.getElementById("current-site");
+var volumeSection = document.getElementById("volume-section");
+var speedSection = document.getElementById("speed-section");
+
+var currentOrigin = null;
+var isPopupOpen = true;
 
 function getTab(callback) {
   chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
@@ -11,24 +18,104 @@ function getTab(callback) {
   });
 }
 
-// --- Volume ---
+// --- Site Enable/Disable ---
 
-function loadVolume() {
+function loadSiteEnabled(callback) {
   getTab(function (tab) {
-    if (!tab || !tab.url) return;
-    var key = new URL(tab.url).origin + ":volume";
+    if (!tab || !tab.url) {
+      if (callback) callback(false);
+      return;
+    }
+    var url = new URL(tab.url);
+    currentOrigin = url.origin;
+    
+    // Display hostname without www
+    var hostname = url.hostname.replace(/^www\./, '');
+    currentSiteSpan.textContent = hostname || 'this site';
+    
+    var key = currentOrigin + ":enabled";
     chrome.storage.local.get(key, function (result) {
-      var volume = result[key] ?? 100;
-      volumeSlider.value = volume;
-      volumeDisplay.textContent = volume + "%";
+      // Default to true (enabled) if not set
+      var enabled = result[key] !== false;
+      siteEnabledToggle.checked = enabled;
+      updateControlsEnabled(enabled);
+      
+      if (callback) callback(enabled);
     });
   });
 }
 
-function setVolume(volume) {
+function updateControlsEnabled(enabled) {
+  if (enabled) {
+    volumeSection.classList.remove("disabled");
+    speedSection.classList.remove("disabled");
+  } else {
+    volumeSection.classList.add("disabled");
+    speedSection.classList.add("disabled");
+  }
+}
+
+function setSiteEnabled(enabled) {
+  if (!currentOrigin) return;
+  
+  var key = currentOrigin + ":enabled";
+  chrome.storage.local.set({ [key]: enabled });
+  
+  updateControlsEnabled(enabled);
+  
   getTab(function (tab) {
     if (!tab || !tab.id) return;
-    var key = new URL(tab.url).origin + ":volume";
+    chrome.tabs.sendMessage(tab.id, { type: "SET_SITE_ENABLED", enabled: enabled }).catch(function () {});
+  });
+  
+  // If re-enabling, reload settings
+  if (enabled) {
+    loadAllSettings();
+  }
+}
+
+siteEnabledToggle.addEventListener("change", function () {
+  setSiteEnabled(siteEnabledToggle.checked);
+});
+
+// --- Load All Settings ---
+
+function loadAllSettings() {
+  if (!currentOrigin) return;
+  
+  // Load volume
+  var volumeKey = currentOrigin + ":volume";
+  chrome.storage.local.get(volumeKey, function (result) {
+    var volume = result[volumeKey] ?? 100;
+    volumeSlider.value = volume;
+    volumeDisplay.textContent = volume + "%";
+  });
+  
+  // Load speed and applyAll together. The popup should always reflect the
+  // stored speed value even when "apply to all videos" is off.
+  var speedKey = currentOrigin + ":speed";
+  chrome.storage.local.get([speedKey, "speedApplyAll"], function (result) {
+    var applyAll = result.speedApplyAll !== false;
+    var speed = result[speedKey] ?? 100;
+    speedApplyAll.checked = applyAll;
+    speedSlider.value = speed;
+    speedDisplay.textContent = (speed / 100).toFixed(2) + "x";
+  });
+  
+  // Load suppress site shortcuts
+  chrome.storage.local.get("suppressSiteShortcuts", function (result) {
+    var enabled = result.suppressSiteShortcuts !== false;
+    suppressSiteShortcuts.checked = enabled;
+  });
+}
+
+// --- Volume ---
+
+function setVolume(volume) {
+  if (!currentOrigin) return;
+  getTab(function (tab) {
+    if (!tab || !tab.id) return;
+    var key = currentOrigin + ":volume";
     chrome.storage.local.set({ [key]: volume });
     chrome.tabs.sendMessage(tab.id, { type: "SET_VOLUME", volume: volume / 100 }).catch(function () {});
   });
@@ -48,23 +135,11 @@ document.getElementById("reset-volume-btn").addEventListener("click", function (
 
 // --- Speed ---
 
-function loadSpeed() {
-  getTab(function (tab) {
-    if (!tab || !tab.url) return;
-    var key = new URL(tab.url).origin + ":speed";
-    chrome.storage.local.get([key, "speedApplyAll"], function (result) {
-      var applyAll = result.speedApplyAll !== false;
-      var speed = applyAll ? (result[key] ?? 100) : 100;
-      speedSlider.value = speed;
-      speedDisplay.textContent = (speed / 100).toFixed(2) + "x";
-    });
-  });
-}
-
 function setSpeed(speed) {
+  if (!currentOrigin) return;
   getTab(function (tab) {
     if (!tab || !tab.id) return;
-    var key = new URL(tab.url).origin + ":speed";
+    var key = currentOrigin + ":speed";
     chrome.storage.local.set({ [key]: speed });
     chrome.tabs.sendMessage(tab.id, { type: "SET_SPEED", speed: speed / 100 }).catch(function () {});
   });
@@ -84,13 +159,6 @@ document.getElementById("reset-speed-btn").addEventListener("click", function ()
 
 // --- Apply to All toggle ---
 
-function loadApplyAll() {
-  chrome.storage.local.get("speedApplyAll", function (result) {
-    var enabled = result.speedApplyAll !== false; // default true
-    speedApplyAll.checked = enabled;
-  });
-}
-
 speedApplyAll.addEventListener("change", function () {
   var enabled = speedApplyAll.checked;
   chrome.storage.local.set({ speedApplyAll: enabled });
@@ -100,31 +168,36 @@ speedApplyAll.addEventListener("change", function () {
   });
 });
 
-// Sync sliders when storage changes (e.g. keyboard shortcuts update speed)
+// Sync sliders when storage changes (e.g. keyboard shortcuts update speed/volume)
 chrome.storage.onChanged.addListener(function (changes) {
-  getTab(function (tab) {
-    if (!tab || !tab.url) return;
-    var origin = new URL(tab.url).origin;
-
-    if (changes[origin + ":speed"]) {
-      var speed = changes[origin + ":speed"].newValue ?? 100;
-      speedSlider.value = speed;
-      speedDisplay.textContent = (speed / 100).toFixed(2) + "x";
-    }
-
-    if (changes[origin + ":volume"]) {
-      var volume = changes[origin + ":volume"].newValue ?? 100;
-      volumeSlider.value = volume;
-      volumeDisplay.textContent = volume + "%";
-    }
-  });
+  if (!isPopupOpen) return;
+  
+  // If currentOrigin isn't set yet, try to get it from the current tab
+  if (!currentOrigin) {
+    chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
+      if (!tabs[0] || !tabs[0].url) return;
+      var origin = new URL(tabs[0].url).origin;
+      syncSliders(changes, origin);
+    });
+    return;
+  }
+  
+  syncSliders(changes, currentOrigin);
 });
 
-function loadSuppressSiteShortcuts() {
-  chrome.storage.local.get("suppressSiteShortcuts", function (result) {
-    var enabled = result.suppressSiteShortcuts !== false; // default true
-    suppressSiteShortcuts.checked = enabled;
-  });
+function syncSliders(changes, origin) {
+  // Only sync if the popup is open and values actually changed
+  if (changes[origin + ":speed"] && changes[origin + ":speed"].newValue !== undefined) {
+    var speed = changes[origin + ":speed"].newValue;
+    speedSlider.value = speed;
+    speedDisplay.textContent = (speed / 100).toFixed(2) + "x";
+  }
+
+  if (changes[origin + ":volume"] && changes[origin + ":volume"].newValue !== undefined) {
+    var volume = changes[origin + ":volume"].newValue;
+    volumeSlider.value = volume;
+    volumeDisplay.textContent = volume + "%";
+  }
 }
 
 suppressSiteShortcuts.addEventListener("change", function () {
@@ -136,7 +209,14 @@ suppressSiteShortcuts.addEventListener("change", function () {
   });
 });
 
-loadVolume();
-loadSpeed();
-loadApplyAll();
-loadSuppressSiteShortcuts();
+// Initialize - load site enabled first, then load all settings
+loadSiteEnabled(function(enabled) {
+  if (enabled) {
+    loadAllSettings();
+  }
+});
+
+// Mark popup as closed when unloading
+window.addEventListener('unload', function() {
+  isPopupOpen = false;
+});

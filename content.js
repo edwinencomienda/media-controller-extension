@@ -23,6 +23,10 @@ function sendSuppressSiteShortcuts(enabled) {
   window.dispatchEvent(new CustomEvent("__vc_set_suppress_site_shortcuts", { detail: { enabled: enabled } }));
 }
 
+function sendSiteEnabled(enabled) {
+  window.dispatchEvent(new CustomEvent("__vc_set_site_enabled", { detail: { enabled: enabled } }));
+}
+
 // Broadcast settings to all child iframes (cross-origin safe via postMessage).
 function broadcastToFrames(payload) {
   var iframes = document.querySelectorAll("iframe");
@@ -34,6 +38,7 @@ function broadcastToFrames(payload) {
 }
 
 function applyPayload(payload) {
+  if (payload.enabled !== undefined) sendSiteEnabled(payload.enabled);
   if (payload.volume !== undefined) sendVolume(payload.volume);
   if (payload.applyAll !== undefined) sendSpeedMode(payload.applyAll);
   if (payload.speed !== undefined) sendSpeed(payload.speed);
@@ -42,6 +47,13 @@ function applyPayload(payload) {
 
 chrome.runtime.onMessage.addListener(function (message) {
   var payload = {};
+  if (message.type === "SET_SITE_ENABLED") {
+    sendSiteEnabled(message.enabled);
+    payload.enabled = message.enabled;
+    // Save the setting
+    var origin = window.location.origin;
+    chrome.storage.local.set({ [origin + ":enabled"]: message.enabled });
+  }
   if (message.type === "SET_VOLUME") {
     sendVolume(message.volume);
     payload.volume = message.volume;
@@ -87,13 +99,20 @@ window.addEventListener("message", function (e) {
     // Child frame is asking for the top-frame's current settings.
     if (e.data.request === "settings") {
       var origin = window.location.origin;
-      chrome.storage.local.get([origin + ":volume", origin + ":speed", "speedApplyAll", "suppressSiteShortcuts"], function (result) {
+      chrome.storage.local.get([origin + ":enabled", origin + ":volume", origin + ":speed", "speedApplyAll", "suppressSiteShortcuts"], function (result) {
+        var enabled = result[origin + ":enabled"];
+        if (enabled === undefined) enabled = true; // default enabled
+        
         var volume = result[origin + ":volume"];
         if (volume === undefined) volume = 100;
+        
         var applyAll = result.speedApplyAll !== false;
+        
         var speed = result[origin + ":speed"];
         if (speed === undefined) speed = 100;
+        
         var payload = {
+          enabled: enabled,
           volume: volume / 100,
           applyAll: applyAll,
           speed: applyAll ? speed / 100 : 1,
@@ -156,7 +175,21 @@ function loadAndApply() {
   }
 
   var origin = window.location.origin;
-  chrome.storage.local.get([origin + ":volume", origin + ":speed", "speedApplyAll", "suppressSiteShortcuts"], function (result) {
+  chrome.storage.local.get([origin + ":enabled", origin + ":volume", origin + ":speed", "speedApplyAll", "suppressSiteShortcuts"], function (result) {
+    // Check if site is enabled (default to true)
+    var enabled = result[origin + ":enabled"];
+    if (enabled === undefined) enabled = true;
+    
+    // Send enabled state first
+    sendSiteEnabled(enabled);
+    
+    if (!enabled) {
+      // Site is disabled, don't apply any overrides
+      // Clear the badge
+      chrome.runtime.sendMessage({ type: "CLEAR_BADGE" }).catch(function(){});
+      return;
+    }
+
     var volume = result[origin + ":volume"];
     if (volume === undefined) volume = 100;
     sendVolume(volume / 100);
@@ -180,6 +213,7 @@ function loadAndApply() {
 
     // Push the initial state down to any iframes that already exist.
     broadcastToFrames({
+      enabled: enabled,
       volume: volume / 100,
       applyAll: applyAll,
       speed: applyAll ? speed / 100 : 1,

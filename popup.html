@@ -2,95 +2,78 @@
 <html>
 <head>
   <style>
+    * {
+      box-sizing: border-box;
+    }
+    
     body {
       width: 240px;
-      padding: 16px;
+      padding: 12px;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       background: #1a1a2e;
       color: #e0e0e0;
       margin: 0;
     }
 
-    h3 {
-      margin: 0 0 12px;
-      font-size: 14px;
-      text-align: center;
-      color: #fff;
-    }
-
-    .slider-container {
+    .header {
       display: flex;
       align-items: center;
-      gap: 10px;
+      justify-content: center;
+      gap: 6px;
+      margin-bottom: 10px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
     }
 
-    #volume-slider {
-      flex: 1;
-      -webkit-appearance: none;
-      appearance: none;
-      height: 6px;
-      border-radius: 3px;
-      background: #333;
-      outline: none;
-    }
-
-    #volume-slider::-webkit-slider-thumb {
-      -webkit-appearance: none;
-      appearance: none;
-      width: 16px;
-      height: 16px;
-      border-radius: 50%;
-      background: #6c63ff;
-      cursor: pointer;
-    }
-
-    #volume-value {
-      min-width: 36px;
-      text-align: right;
-      font-size: 14px;
-      font-weight: 600;
+    .header-icon {
+      width: 18px;
+      height: 18px;
       color: #6c63ff;
     }
 
-    .label {
-      font-size: 12px;
-      color: #aaa;
-      margin: 12px 0 6px;
-    }
-
-    .label:first-of-type {
-      margin-top: 0;
-    }
-
-    .reset-btn {
-      display: block;
-      width: 100%;
-      margin-top: 8px;
-      padding: 6px 0;
-      border: none;
-      border-radius: 4px;
-      background: #6c63ff;
-      color: #fff;
-      font-size: 13px;
+    .header h3 {
+      margin: 0;
+      font-size: 14px;
       font-weight: 600;
-      cursor: pointer;
+      color: #fff;
     }
 
-    .reset-btn:hover {
-      background: #5a52d5;
-    }
-
-    .speed-label {
+    /* Site Toggle Section */
+    .site-toggle-section {
+      background: rgba(108, 99, 255, 0.1);
+      border: 1px solid rgba(108, 99, 255, 0.25);
+      border-radius: 8px;
+      padding: 8px 10px;
+      margin-bottom: 10px;
       display: flex;
-      justify-content: space-between;
       align-items: center;
+      justify-content: space-between;
     }
 
-    .toggle {
+    .site-toggle-label {
       display: flex;
       align-items: center;
       gap: 6px;
+      font-size: 12px;
+      font-weight: 500;
+      color: #c0c0d0;
+    }
+
+    .site-toggle-label .site-name {
+      color: #fff;
+      font-weight: 600;
+      max-width: 100px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    /* Toggle Switch - Compact */
+    .toggle {
+      display: flex;
+      align-items: center;
       cursor: pointer;
+      position: relative;
     }
 
     .toggle input {
@@ -98,24 +81,24 @@
     }
 
     .toggle-slider {
-      width: 28px;
-      height: 14px;
-      background: #555;
-      border-radius: 7px;
+      width: 36px;
+      height: 20px;
+      background: #4a4a5e;
+      border-radius: 10px;
       position: relative;
-      transition: background 0.2s;
+      transition: all 0.2s ease;
     }
 
     .toggle-slider::after {
       content: "";
       position: absolute;
-      width: 10px;
-      height: 10px;
-      background: #ccc;
+      width: 14px;
+      height: 14px;
+      background: #fff;
       border-radius: 50%;
-      top: 2px;
-      left: 2px;
-      transition: transform 0.2s, background 0.2s;
+      top: 3px;
+      left: 3px;
+      transition: all 0.2s ease;
     }
 
     .toggle input:checked + .toggle-slider {
@@ -123,93 +106,288 @@
     }
 
     .toggle input:checked + .toggle-slider::after {
-      transform: translateX(14px);
-      background: #fff;
+      transform: translateX(16px);
     }
 
-    .toggle-text {
-      font-size: 10px;
-      color: #777;
+    /* Control Sections - Compact */
+    .control-section {
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      border-radius: 8px;
+      padding: 10px;
+      margin-bottom: 8px;
+      transition: opacity 0.25s ease;
     }
 
-    .shortcut-hint {
+    .control-section.disabled {
+      opacity: 0.35;
+      pointer-events: none;
+    }
+
+    .control-header {
       display: flex;
-      justify-content: center;
-      gap: 14px;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 8px;
+    }
+
+    .control-label {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      font-weight: 600;
+      color: #a0a0b0;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .control-icon {
+      width: 14px;
+      height: 14px;
+      color: #6c63ff;
+    }
+
+    .control-value {
+      font-size: 13px;
+      font-weight: 700;
+      color: #6c63ff;
+      min-width: 42px;
+      text-align: right;
+    }
+
+    /* Slider - Compact */
+    .slider-container {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    input[type="range"] {
+      flex: 1;
+      -webkit-appearance: none;
+      appearance: none;
+      height: 4px;
+      border-radius: 2px;
+      background: #3a3a4e;
+      outline: none;
+      cursor: pointer;
+    }
+
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: #6c63ff;
+      cursor: pointer;
+    }
+
+    /* Reset Button - Compact */
+    .reset-btn {
+      display: block;
+      width: 100%;
       margin-top: 8px;
+      padding: 6px 0;
+      border: none;
+      border-radius: 6px;
+      background: rgba(108, 99, 255, 0.15);
+      color: #b8b0ff;
       font-size: 11px;
-      color: #777;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s ease;
     }
 
-    .shortcut-hint kbd {
-      display: inline-block;
-      padding: 1px 5px;
-      border: 1px solid #555;
-      border-radius: 3px;
-      background: #2a2a3e;
-      color: #bbb;
-      font-family: inherit;
+    .reset-btn:hover {
+      background: rgba(108, 99, 255, 0.25);
+      color: #fff;
+    }
+
+    /* Speed Options Row */
+    .speed-options {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-top: 8px;
+      padding-top: 8px;
+      border-top: 1px solid rgba(255, 255, 255, 0.05);
+    }
+
+    .speed-option-label {
       font-size: 11px;
+      color: #808090;
     }
 
-    .shortcut-section {
-      margin-top: 10px;
-      padding-top: 10px;
-      border-top: 1px solid #333;
+    .speed-toggle-group {
+      display: flex;
+      align-items: center;
+      gap: 6px;
     }
 
-    .shortcut-section-title {
+    .speed-toggle-text {
       font-size: 10px;
-      color: #666;
-      text-align: center;
-      margin-bottom: 4px;
+      color: #606070;
+    }
+
+    /* Section Shortcuts - Inside each control section */
+    .section-shortcut {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-top: 8px;
+      padding-top: 8px;
+      border-top: 1px solid rgba(255, 255, 255, 0.05);
+    }
+
+    .section-shortcut-label {
+      font-size: 10px;
+      color: #707080;
+      font-weight: 500;
+    }
+
+    .section-shortcut-keys {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    kbd {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 20px;
+      height: 18px;
+      padding: 0 4px;
+      border: 1px solid rgba(108, 99, 255, 0.3);
+      border-radius: 3px;
+      background: rgba(108, 99, 255, 0.1);
+      color: #c8c0ff;
+      font-family: inherit;
+      font-size: 10px;
+      font-weight: 600;
+    }
+
+    .shortcut-dash {
+      color: #505060;
+      font-size: 10px;
+      font-weight: 500;
+    }
+
+    /* Suppress shortcuts section */
+    .suppress-section {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-top: 4px;
+      padding-top: 8px;
+      border-top: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .suppress-label {
+      font-size: 11px;
+      color: #808090;
     }
   </style>
 </head>
 <body>
-  <h3>Media Controller</h3>
-  <div class="label">Volume</div>
-  <div class="slider-container">
-    <input type="range" id="volume-slider" min="0" max="100" value="100">
-    <span id="volume-value">100%</span>
+  <div class="header">
+    <svg class="header-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+      <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+    </svg>
+    <h3>Media Controller</h3>
   </div>
-  <button id="reset-volume-btn" class="reset-btn">Reset to 100%</button>
-  <div class="label speed-label">
-    <span>Speed</span>
+
+  <!-- Site Enable/Disable Toggle -->
+  <div class="site-toggle-section">
+    <div class="site-toggle-label">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: #6c63ff;">
+        <circle cx="12" cy="12" r="10"></circle>
+        <line x1="2" y1="12" x2="22" y2="12"></line>
+        <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
+      </svg>
+      <span>Enable on <span class="site-name" id="current-site">this site</span></span>
+    </div>
     <label class="toggle">
-      <input type="checkbox" id="speed-apply-all" checked>
+      <input type="checkbox" id="site-enabled" checked>
       <span class="toggle-slider"></span>
-      <span class="toggle-text">Apply to all</span>
     </label>
   </div>
-  <div class="slider-container">
-    <input type="range" id="speed-slider" min="25" max="400" step="25" value="100">
-    <span id="speed-value">1.00x</span>
-  </div>
-  <button id="reset-speed-btn" class="reset-btn">Reset to 1x</button>
-  <div class="shortcut-section">
-    <div class="shortcut-section-title">Speed</div>
-    <div class="shortcut-hint">
-      <span><kbd>S</kbd> slow down</span>
-      <span><kbd>D</kbd> speed up</span>
+
+    <!-- Volume Control -->
+  <div class="control-section" id="volume-section">
+    <div class="control-header">
+      <div class="control-label">
+        <svg class="control-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+          <path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+        </svg>
+        Volume
+      </div>
+      <span class="control-value" id="volume-value">100%</span>
+    </div>
+    <div class="slider-container">
+      <input type="range" id="volume-slider" min="0" max="100" value="100">
+    </div>
+    <button id="reset-volume-btn" class="reset-btn">Reset</button>
+    <div class="section-shortcut">
+      <span class="section-shortcut-label">Keys</span>
+      <div class="section-shortcut-keys">
+        <kbd>W</kbd>
+        <span class="shortcut-dash">-</span>
+        <kbd>E</kbd>
+      </div>
     </div>
   </div>
-  <div class="shortcut-section">
-    <div class="shortcut-section-title">Volume</div>
-    <div class="shortcut-hint">
-      <span><kbd>W</kbd> down</span>
-      <span><kbd>E</kbd> up</span>
+
+    <!-- Speed Control -->
+  <div class="control-section" id="speed-section">
+    <div class="control-header">
+      <div class="control-label">
+        <svg class="control-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"></circle>
+          <polyline points="12 6 12 12 16 14"></polyline>
+        </svg>
+        Speed
+      </div>
+      <span class="control-value" id="speed-value">1.00x</span>
+    </div>
+    <div class="slider-container">
+      <input type="range" id="speed-slider" min="25" max="400" step="25" value="100">
+    </div>
+    <button id="reset-speed-btn" class="reset-btn">Reset</button>
+    
+    <div class="speed-options">
+      <span class="speed-option-label">Apply to all videos</span>
+      <div class="speed-toggle-group">
+        <label class="toggle">
+          <input type="checkbox" id="speed-apply-all" checked>
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+    </div>
+    
+    <div class="section-shortcut">
+      <span class="section-shortcut-label">Keys</span>
+      <div class="section-shortcut-keys">
+        <kbd>S</kbd>
+        <span class="shortcut-dash">-</span>
+        <kbd>D</kbd>
+      </div>
     </div>
   </div>
-  <div class="shortcut-section">
-    <label class="toggle" style="justify-content: space-between; width: 100%;">
-      <span class="toggle-text" style="font-size: 11px; color: #aaa;">Suppress site shortcuts</span>
-      <span style="display: flex; align-items: center;">
-        <input type="checkbox" id="suppress-site-shortcuts" checked>
-        <span class="toggle-slider"></span>
-      </span>
+
+  <!-- Block Site Shortcuts Toggle -->
+  <div class="suppress-section">
+    <span class="suppress-label">Block site shortcuts</span>
+    <label class="toggle">
+      <input type="checkbox" id="suppress-site-shortcuts" checked>
+      <span class="toggle-slider"></span>
     </label>
   </div>
+
   <script src="popup.js"></script>
 </body>
 </html>
