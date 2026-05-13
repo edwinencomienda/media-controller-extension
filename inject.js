@@ -13,6 +13,17 @@
   var MAX_VOLUME = 1;
   var VOLUME_STEP = 0.05;
 
+  function isYouTubeLiveVideo() {
+    if (!/(^|\.)youtube\.com$/.test(window.location.hostname)) return false;
+    var player = document.querySelector(".html5-video-player");
+    if (player && player.classList.contains("ytp-live")) return true;
+    return !!document.querySelector(".ytp-live-badge[disabled]");
+  }
+
+  function shouldApplySpeedOverride() {
+    return siteEnabled && overrideSpeed !== null && speedApplyAll && !isYouTubeLiveVideo();
+  }
+
   // Store original descriptors
   var volDesc = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, "volume");
   var volOrigSet = volDesc.set;
@@ -38,11 +49,11 @@
   // --- PlaybackRate monkey-patch (respects enabled state and applyAll toggle) ---
   Object.defineProperty(HTMLMediaElement.prototype, "playbackRate", {
     get: function () {
-      if (siteEnabled && overrideSpeed !== null && speedApplyAll) return overrideSpeed;
+      if (shouldApplySpeedOverride()) return overrideSpeed;
       return rateOrigGet.call(this);
     },
     set: function (val) {
-      if (siteEnabled && overrideSpeed !== null && speedApplyAll) {
+      if (shouldApplySpeedOverride()) {
         rateOrigSet.call(this, overrideSpeed);
       } else {
         rateOrigSet.call(this, val);
@@ -115,6 +126,7 @@
   function applySpeed(speed) {
     if (!siteEnabled) return;
     overrideSpeed = speed;
+    if (isYouTubeLiveVideo()) return;
     if (speedApplyAll) {
       // Apply to all media elements
       var els = document.querySelectorAll("video, audio");
@@ -136,7 +148,7 @@
     if (overrideVolume !== null) {
       volOrigSet.call(el, overrideVolume);
     }
-    if (overrideSpeed !== null && speedApplyAll) {
+    if (overrideSpeed !== null && speedApplyAll && !isYouTubeLiveVideo()) {
       rateOrigSet.call(el, overrideSpeed);
     }
   }

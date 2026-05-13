@@ -12,6 +12,7 @@ A Chrome extension that controls the volume and playback speed of all videos/aud
 - **Visual Overlays** — Translucent overlay appears in the center of the page showing current speed or volume when changed via keyboard
 - **Per-Site Persistence** — Volume and speed settings are saved per-origin and restored on page load
 - **SPA Support** — Works across YouTube video navigation without needing a page refresh
+- **YouTube Live Safe** — Playback speed is not forced on YouTube live streams
 - **Reset Buttons** — Quickly reset volume to 100% or speed to 1x
 
 ## Installation
@@ -95,6 +96,7 @@ YouTube is a Single Page Application — clicking a video doesn't reload the pag
 
 1. **`yt-navigate-finish` event** — YouTube fires this custom DOM event on every client-side navigation. `content.js` listens for it and re-sends the saved volume/speed to `inject.js`.
 2. **Monkey-patched setters** — Even without the event, any attempt by YouTube to set volume/speed on the new video is intercepted by the patched setters in `inject.js`.
+3. **Live stream guard** — YouTube live streams keep their own playback rate because changing speed on live content can break playback behavior.
 
 ### Keyboard Shortcuts
 
