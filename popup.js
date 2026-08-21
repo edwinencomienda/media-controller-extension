@@ -4,6 +4,8 @@ var speedSlider = document.getElementById("speed-slider");
 var speedDisplay = document.getElementById("speed-value");
 var speedApplyAll = document.getElementById("speed-apply-all");
 var suppressSiteShortcuts = document.getElementById("suppress-site-shortcuts");
+var youtubeAutoPip = document.getElementById("youtube-auto-pip");
+var autoPipSection = document.getElementById("auto-pip-section");
 var siteEnabledToggle = document.getElementById("site-enabled");
 var currentSiteSpan = document.getElementById("current-site");
 var volumeSection = document.getElementById("volume-section");
@@ -11,6 +13,16 @@ var speedSection = document.getElementById("speed-section");
 
 var currentOrigin = null;
 var isPopupOpen = true;
+var isYouTubeTab = false;
+
+function isYouTubeUrl(url) {
+  try {
+    var hostname = new URL(url).hostname;
+    return /(^|\.)youtube\.com$/.test(hostname);
+  } catch (e) {
+    return false;
+  }
+}
 
 function getTab(callback) {
   chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
@@ -28,6 +40,14 @@ function loadSiteEnabled(callback) {
     }
     var url = new URL(tab.url);
     currentOrigin = url.origin;
+    isYouTubeTab = isYouTubeUrl(tab.url);
+
+    // Auto PiP toggle only applies on YouTube
+    if (isYouTubeTab) {
+      autoPipSection.classList.remove("hidden");
+    } else {
+      autoPipSection.classList.add("hidden");
+    }
     
     // Display hostname without www
     var hostname = url.hostname.replace(/^www\./, '');
@@ -35,8 +55,8 @@ function loadSiteEnabled(callback) {
     
     var key = currentOrigin + ":enabled";
     chrome.storage.local.get(key, function (result) {
-      // Default to true (enabled) if not set
-      var enabled = result[key] !== false;
+      // Sites are disabled until explicitly enabled.
+      var enabled = result[key] === true;
       siteEnabledToggle.checked = enabled;
       updateControlsEnabled(enabled);
       
@@ -106,6 +126,11 @@ function loadAllSettings() {
   chrome.storage.local.get("suppressSiteShortcuts", function (result) {
     var enabled = result.suppressSiteShortcuts !== false;
     suppressSiteShortcuts.checked = enabled;
+  });
+
+  // Load YouTube auto PiP (default: off)
+  chrome.storage.local.get("youtubeAutoPip", function (result) {
+    youtubeAutoPip.checked = result.youtubeAutoPip === true;
   });
 }
 
@@ -209,10 +234,26 @@ suppressSiteShortcuts.addEventListener("change", function () {
   });
 });
 
+// --- YouTube Auto PiP (default off) ---
+
+youtubeAutoPip.addEventListener("change", function () {
+  var enabled = youtubeAutoPip.checked;
+  chrome.storage.local.set({ youtubeAutoPip: enabled });
+  getTab(function (tab) {
+    if (!tab || !tab.id) return;
+    chrome.tabs.sendMessage(tab.id, { type: "SET_YOUTUBE_AUTO_PIP", enabled: enabled }).catch(function () {});
+  });
+});
+
 // Initialize - load site enabled first, then load all settings
 loadSiteEnabled(function(enabled) {
   if (enabled) {
     loadAllSettings();
+  } else if (isYouTubeTab) {
+    // Still load Auto PiP even when site controls are disabled
+    chrome.storage.local.get("youtubeAutoPip", function (result) {
+      youtubeAutoPip.checked = result.youtubeAutoPip === true;
+    });
   }
 });
 

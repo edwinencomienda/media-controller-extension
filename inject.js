@@ -1,9 +1,10 @@
 (function () {
-  var siteEnabled = true; // Default: enabled
+  var siteEnabled = false; // Default: disabled until explicitly enabled
   var overrideVolume = null;
   var overrideSpeed = null;
   var speedApplyAll = true;
   var suppressSiteShortcuts = true;
+  var youtubeAutoPip = false; // Default: off
 
   var MIN_SPEED = 0.25;
   var MAX_SPEED = 4;
@@ -13,12 +14,458 @@
   var MAX_VOLUME = 1;
   var VOLUME_STEP = 0.05;
 
+  var IS_YOUTUBE = /(^|\.)youtube\.com$/.test(window.location.hostname);
+
   function isYouTubeLiveVideo() {
-    if (!/(^|\.)youtube\.com$/.test(window.location.hostname)) return false;
+    if (!IS_YOUTUBE) return false;
     var player = document.querySelector(".html5-video-player");
     if (player && player.classList.contains("ytp-live")) return true;
     return !!document.querySelector(".ytp-live-badge[disabled]");
   }
+
+  // --- YouTube Auto Picture-in-Picture ---
+  // Uses Chrome's automatic PiP media-session hook so PiP can open when
+  // Chrome considers the playing YouTube video eligible.
+  //
+  // Lifecycle gotchas (YouTube-specific):
+  // - Leaving PiP without restoring playback leaves the player stuck on
+  //   "Playing in picture-in-picture" and breaks the next auto-enter.
+  // - YouTube rewrites mediaSession often; we must re-claim the handler.
+
+  var pipVideoEl = null;
+  var weEnteredPip = false;
+  var pipOpenMode = null; // "auto" or "manual"
+  var autoPipReclaimTimer = null;
+  var restoreAfterPipScheduled = false;
+  var manualPipButtonEl = null;
+  // true = playing, false = paused, null = not in a PiP session we track
+  // Updated live while in PiP so pause in the PiP window is remembered.
+  // Never force-play on return — only force-pause if this is false.
+  var playbackStateInPip = null;
+  var pipEnteredAt = 0;
+  var PIP_EXIT_COOLDOWN_MS = 500;
+
+  function getYouTubeVideo() {
+    if (!IS_YOUTUBE) return null;
+    // Prefer the main player video (not ads / related-video previews if possible)
+    var main = document.querySelector(
+      ".html5-video-player:not(.ad-showing) video.html5-main-video, " +
+        ".html5-video-player:not(.ad-showing) video, " +
+        "video.html5-main-video, video"
+    );
+    return main || null;
+  }
+
+  function getYouTubeVideos() {
+    if (!IS_YOUTUBE) return [];
+    return Array.prototype.slice.call(document.querySelectorAll("video"));
+  }
+
+  function canAutoPip() {
+    return IS_YOUTUBE && youtubeAutoPip;
+  }
+
+  function setAutoPipVideoHint(video, enabled) {
+    if (!video || video.tagName !== "VIDEO") return;
+    try {
+      if ("autoPictureInPicture" in video) video.autoPictureInPicture = enabled;
+      if (enabled) {
+        if ("disablePictureInPicture" in video) video.disablePictureInPicture = false;
+        video.setAttribute("autopictureinpicture", "");
+      } else {
+        video.removeAttribute("autopictureinpicture");
+      }
+    } catch (e) {}
+  }
+
+  function syncAutoPipVideoHints() {
+    if (!IS_YOUTUBE) return;
+    var videos = getYouTubeVideos();
+    for (var i = 0; i < videos.length; i++) {
+      setAutoPipVideoHint(videos[i], canAutoPip());
+    }
+  }
+
+  function forcePause(video) {
+    if (!video || video.ended) return;
+    try {
+      if (!video.paused) video.pause();
+    } catch (e) {}
+  }
+
+  function registerAutoPipHandler() {
+    if (!IS_YOUTUBE || !("mediaSession" in navigator)) return;
+    try {
+      if (canAutoPip()) {
+        syncAutoPipVideoHints();
+        navigator.mediaSession.setActionHandler("enterpictureinpicture", function () {
+          enterYouTubePip("auto");
+        });
+      } else {
+        // Clear handler when disabled so Chrome won't auto-trigger for us
+        navigator.mediaSession.setActionHandler("enterpictureinpicture", null);
+      }
+    } catch (e) {
+      // Some browsers throw if the action isn't supported
+    }
+  }
+
+  function startAutoPipReclaim() {
+    stopAutoPipReclaim();
+    if (!canAutoPip()) return;
+    registerAutoPipHandler();
+    ensureManualPipButton();
+    // YouTube frequently overwrites mediaSession — re-claim periodically
+    autoPipReclaimTimer = setInterval(function () {
+      if (!canAutoPip()) {
+        stopAutoPipReclaim();
+        return;
+      }
+      syncAutoPipVideoHints();
+      registerAutoPipHandler();
+      ensureManualPipButton();
+    }, 2000);
+  }
+
+  function stopAutoPipReclaim() {
+    if (autoPipReclaimTimer) {
+      clearInterval(autoPipReclaimTimer);
+      autoPipReclaimTimer = null;
+    }
+  }
+
+  function canExitPipNow() {
+    // Ignore spurious focus/visibility blips right after we open PiP
+    // (common when switching apps while video is already playing)
+    return Date.now() - pipEnteredAt >= PIP_EXIT_COOLDOWN_MS;
+  }
+
+  function snapshotPipPlaybackState(video) {
+    // Capture BEFORE exitPictureInPicture — Chrome/YouTube often resume on leave
+    if (video && video.tagName === "VIDEO") {
+      playbackStateInPip = !video.paused;
+    }
+  }
+
+  function restoreAfterPip(videoHint) {
+    if (restoreAfterPipScheduled) return;
+    restoreAfterPipScheduled = true;
+
+    var video =
+      videoHint ||
+      pipVideoEl ||
+      document.pictureInPictureElement ||
+      getYouTubeVideo();
+
+    // Snapshot taken before exit (or live pause/play while in PiP)
+    var shouldPlay = playbackStateInPip;
+
+    weEnteredPip = false;
+    pipVideoEl = null;
+    pipOpenMode = null;
+    playbackStateInPip = null;
+
+    // Re-enable auto-enter for the next leave
+    registerAutoPipHandler();
+    setTimeout(registerAutoPipHandler, 100);
+    setTimeout(registerAutoPipHandler, 500);
+    setTimeout(registerAutoPipHandler, 1500);
+
+    function finishRestore() {
+      restoreAfterPipScheduled = false;
+      if (!video) return;
+      // Critical: NEVER force play on return (that was the unwanted autoplay).
+      // If user had paused in PiP, force pause — browser often resumes on leave.
+      if (shouldPlay === false) {
+        forcePause(video);
+        // YouTube sometimes resumes a beat later after leave
+        setTimeout(function () {
+          forcePause(video);
+        }, 100);
+        setTimeout(function () {
+          forcePause(video);
+        }, 300);
+      }
+      updateManualPipButton();
+      registerAutoPipHandler();
+    }
+
+    setTimeout(finishRestore, 50);
+  }
+
+  function enterYouTubePip(mode) {
+    if (!canAutoPip()) return;
+    if (document.pictureInPictureElement) return;
+
+    var isManual = mode === "manual";
+    var video = getYouTubeVideo();
+    // Auto-enter only while media is playing. Manual button clicks can open
+    // PiP for paused, already-loaded videos because the click supplies gesture.
+    if (!video || video.ended) return;
+    if (!isManual && video.paused) return;
+    if (typeof video.requestPictureInPicture !== "function") return;
+
+    playbackStateInPip = !video.paused;
+    weEnteredPip = true;
+    pipVideoEl = video;
+    pipOpenMode = mode || "auto";
+    pipEnteredAt = Date.now();
+
+    try {
+      var p = video.requestPictureInPicture();
+      if (p && typeof p.then === "function") {
+        p.then(function () {
+          // Do not force play here — video was already playing
+          registerAutoPipHandler();
+        }).catch(function () {
+          weEnteredPip = false;
+          pipVideoEl = null;
+          pipOpenMode = null;
+          playbackStateInPip = null;
+          updateManualPipButton();
+          registerAutoPipHandler();
+        });
+      }
+    } catch (e) {
+      weEnteredPip = false;
+      pipVideoEl = null;
+      pipOpenMode = null;
+      playbackStateInPip = null;
+      updateManualPipButton();
+    }
+  }
+
+  function getPlayerContainer() {
+    return document.querySelector(".html5-video-player");
+  }
+
+  // The button lives inside the player element (absolute, not fixed) so it
+  // stays pinned to the video's top-right, scrolls with it, and never
+  // overlaps the YouTube masthead or anything outside the player.
+  function attachManualPipButton() {
+    if (!manualPipButtonEl) return;
+    var player = getPlayerContainer();
+    if (!player) return;
+    if (manualPipButtonEl.parentNode !== player) {
+      player.appendChild(manualPipButtonEl);
+    }
+  }
+
+  function ensureManualPipButton() {
+    if (!IS_YOUTUBE) return;
+
+    if (manualPipButtonEl) {
+      attachManualPipButton();
+      updateManualPipButton();
+      return;
+    }
+
+    manualPipButtonEl = document.createElement("button");
+    manualPipButtonEl.type = "button";
+    manualPipButtonEl.className = "vc-manual-pip-button";
+    manualPipButtonEl.title = "Open picture-in-picture";
+    manualPipButtonEl.setAttribute("aria-label", "Open picture-in-picture");
+    // Built with createElement — YouTube enforces Trusted Types via CSP,
+    // so plain-string innerHTML assignment throws in the main world.
+    var icon = document.createElement("span");
+    icon.className = "vc-pip-icon";
+    icon.setAttribute("aria-hidden", "true");
+    var inset = document.createElement("span");
+    icon.appendChild(inset);
+    manualPipButtonEl.appendChild(icon);
+    manualPipButtonEl.style.cssText =
+      "position:absolute;top:12px;right:12px;width:38px;height:30px;" +
+      "display:flex;align-items:center;justify-content:center;padding:0;" +
+      "border:1px solid rgba(255,255,255,0.35);border-radius:6px;" +
+      "background:rgba(8,8,10,0.78);color:#fff;z-index:500;" +
+      "cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,0.28);" +
+      "opacity:0.92;transition:opacity 0.15s ease,background 0.15s ease;" +
+      "pointer-events:auto;";
+
+    icon.style.cssText =
+      "position:relative;display:block;width:20px;height:14px;" +
+      "border:2px solid currentColor;border-radius:2px;box-sizing:border-box;";
+    inset.style.cssText =
+      "position:absolute;right:2px;bottom:2px;width:8px;height:5px;" +
+      "border:2px solid currentColor;border-radius:1px;box-sizing:border-box;";
+
+    manualPipButtonEl.addEventListener("mouseenter", function () {
+      manualPipButtonEl.style.opacity = "1";
+      manualPipButtonEl.style.background = "rgba(20,20,24,0.92)";
+    });
+    manualPipButtonEl.addEventListener("mouseleave", function () {
+      manualPipButtonEl.style.opacity = "0.92";
+      manualPipButtonEl.style.background = "rgba(8,8,10,0.78)";
+    });
+    manualPipButtonEl.addEventListener("click", function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      enterYouTubePip("manual");
+    });
+
+    attachManualPipButton();
+    updateManualPipButton();
+  }
+
+  function removeManualPipButton() {
+    if (manualPipButtonEl && manualPipButtonEl.parentNode) {
+      manualPipButtonEl.parentNode.removeChild(manualPipButtonEl);
+    }
+    manualPipButtonEl = null;
+  }
+
+  function updateManualPipButton() {
+    if (!manualPipButtonEl) return;
+    attachManualPipButton();
+
+    var video = getYouTubeVideo();
+    var shouldShow =
+      canAutoPip() &&
+      !!manualPipButtonEl.parentNode &&
+      !!video &&
+      !video.ended &&
+      typeof video.requestPictureInPicture === "function" &&
+      !document.pictureInPictureElement;
+
+    manualPipButtonEl.style.display = shouldShow ? "flex" : "none";
+  }
+
+  function exitYouTubePip() {
+    if (!canExitPipNow()) return;
+
+    var pipEl = document.pictureInPictureElement;
+    if (!pipEl) {
+      // No PiP window — do not touch playback (avoids accidental autoplay)
+      weEnteredPip = false;
+      pipVideoEl = null;
+      pipOpenMode = null;
+      playbackStateInPip = null;
+      registerAutoPipHandler();
+      return;
+    }
+
+    if (!pipVideoEl) pipVideoEl = pipEl;
+    // Must snapshot before exit — leave often reports playing even if user paused
+    snapshotPipPlaybackState(pipEl);
+
+    try {
+      var p = document.exitPictureInPicture();
+      if (p && typeof p.then === "function") {
+        p.then(function () {
+          restoreAfterPip(pipEl);
+        }).catch(function () {
+          restoreAfterPip(pipEl);
+        });
+      } else {
+        restoreAfterPip(pipEl);
+      }
+    } catch (e) {
+      restoreAfterPip(pipEl);
+    }
+  }
+
+  // Track pause/play while the video is in PiP (user toggles in the PiP chrome)
+  document.addEventListener(
+    "pause",
+    function (e) {
+      if (!e.target || e.target.tagName !== "VIDEO") return;
+      if (document.pictureInPictureElement !== e.target) return;
+      playbackStateInPip = false;
+    },
+    true
+  );
+  document.addEventListener(
+    "play",
+    function (e) {
+      if (!e.target || e.target.tagName !== "VIDEO") return;
+      if (document.pictureInPictureElement !== e.target) return;
+      playbackStateInPip = true;
+    },
+    true
+  );
+
+  // Tab leave / return (Chrome reliably fires mediaSession on tab switch)
+  document.addEventListener("visibilitychange", function () {
+    if (!canAutoPip()) return;
+    if (document.visibilityState === "visible") {
+      // Slight delay so Chrome finishes focus/visibility transitions
+      setTimeout(function () {
+        if (document.visibilityState !== "visible" || !canAutoPip()) return;
+        if (!document.hasFocus()) return;
+        if (!canExitPipNow()) return;
+        if (pipOpenMode === "manual") return;
+        exitYouTubePip();
+      }, 80);
+    } else if (document.visibilityState === "hidden") {
+      // Tab leave — re-claim handler, then best-effort enter (Chrome usually
+      // also invokes enterpictureinpicture via mediaSession for tab switches)
+      registerAutoPipHandler();
+      setTimeout(function () {
+        if (!canAutoPip() || document.visibilityState !== "hidden") return;
+        enterYouTubePip("auto");
+      }, 50);
+    }
+  });
+
+  // Always restore when PiP actually ends (user close, our exit, or browser)
+  document.addEventListener(
+    "leavepictureinpicture",
+    function (e) {
+      if (!IS_YOUTUBE) return;
+      // Prefer state we already snapped (before exit). Only fill if still unknown.
+      // Do NOT trust e.target.paused after leave — browser often auto-resumes.
+      if (playbackStateInPip === null && e.target && e.target.tagName === "VIDEO") {
+        // Fallback only if we never tracked (e.g. user opened PiP manually)
+        playbackStateInPip = !e.target.paused;
+      }
+      restoreAfterPip(e.target);
+      updateManualPipButton();
+    },
+    true
+  );
+
+  document.addEventListener(
+    "enterpictureinpicture",
+    function (e) {
+      if (!IS_YOUTUBE) return;
+      pipVideoEl = e.target;
+      weEnteredPip = true;
+      if (!pipOpenMode) pipOpenMode = "auto";
+      pipEnteredAt = Date.now();
+      // If we didn't start this enter, seed state from element once
+      if (playbackStateInPip === null && e.target && e.target.tagName === "VIDEO") {
+        playbackStateInPip = !e.target.paused;
+      }
+      // Do not force play/pause on enter
+      updateManualPipButton();
+      registerAutoPipHandler();
+    },
+    true
+  );
+
+  // Re-register after YouTube SPA navigations (player may reset mediaSession)
+  document.addEventListener("yt-navigate-finish", function () {
+    if (!canAutoPip()) return;
+    // Small delay so YouTube finishes wiring its own media session
+    setTimeout(function () {
+      registerAutoPipHandler();
+      startAutoPipReclaim();
+      ensureManualPipButton();
+    }, 300);
+  });
+
+  // YouTube often rewrites mediaSession on play — re-claim the auto-PiP handler
+  document.addEventListener(
+    "play",
+    function (e) {
+      if (!canAutoPip()) return;
+      if (!e.target || e.target.tagName !== "VIDEO") return;
+      setAutoPipVideoHint(e.target, true);
+      ensureManualPipButton();
+      setTimeout(registerAutoPipHandler, 50);
+    },
+    true
+  );
 
   function shouldApplySpeedOverride() {
     return siteEnabled && overrideSpeed !== null && speedApplyAll && !isYouTubeLiveVideo();
@@ -155,8 +602,10 @@
 
   // --- Watch for dynamically-added media (e.g. "Show demo" buttons) ---
   function scanSubtree(node) {
-    if (!siteEnabled || !node) return;
+    if (!node) return;
     if (node.nodeType !== 1) return; // Element nodes only
+    if (canAutoPip()) ensureManualPipButton();
+    if (!siteEnabled) return;
     if (node.tagName === "VIDEO" || node.tagName === "AUDIO") {
       applyOverridesTo(node);
     }
@@ -169,7 +618,6 @@
   }
 
   var mediaObserver = new MutationObserver(function (mutations) {
-    if (!siteEnabled) return;
     for (var i = 0; i < mutations.length; i++) {
       var added = mutations[i].addedNodes;
       for (var j = 0; j < added.length; j++) {
@@ -192,6 +640,10 @@
     "loadedmetadata",
     function (e) {
       applyOverridesTo(e.target);
+      if (canAutoPip()) {
+        setAutoPipVideoHint(e.target, true);
+        ensureManualPipButton();
+      }
     },
     true
   );
@@ -262,6 +714,19 @@
 
   window.addEventListener("__vc_set_suppress_site_shortcuts", function (e) {
     suppressSiteShortcuts = e.detail.enabled;
+  });
+
+  window.addEventListener("__vc_set_youtube_auto_pip", function (e) {
+    youtubeAutoPip = e.detail.enabled === true;
+    syncAutoPipVideoHints();
+    if (youtubeAutoPip) {
+      startAutoPipReclaim();
+      ensureManualPipButton();
+    } else {
+      stopAutoPipReclaim();
+      removeManualPipButton();
+      registerAutoPipHandler(); // clears handler
+    }
   });
 
   // --- Keyboard shortcuts ---
@@ -335,4 +800,12 @@
       window.dispatchEvent(new CustomEvent("__vc_volume_changed", { detail: { volume: overrideVolume } }));
     }
   }, true);
+
+  function requestCurrentSettings() {
+    window.dispatchEvent(new CustomEvent("__vc_request_settings"));
+  }
+
+  requestCurrentSettings();
+  setTimeout(requestCurrentSettings, 250);
+  setTimeout(requestCurrentSettings, 1000);
 })();

@@ -11,9 +11,11 @@ A Chrome extension that controls the volume and playback speed of all videos/aud
   - **Volume**: Press `W` to decrease, `E` to increase (5% increments)
 - **Visual Overlays** — Translucent overlay appears in the center of the page showing current speed or volume when changed via keyboard
 - **Per-Site Persistence** — Volume and speed settings are saved per-origin and restored on page load
+- **Opt-In Per Site** — The extension is disabled on new sites until you enable it from the popup
 - **SPA Support** — Works across YouTube video navigation without needing a page refresh
 - **YouTube Live Safe** — Playback speed is not forced on YouTube live streams
 - **Reset Buttons** — Quickly reset volume to 100% or speed to 1x
+- **Auto PiP (YouTube only)** — Optional; **off by default**. When enabled in the popup on YouTube, tab switches can auto-open Picture-in-Picture, and a small button appears on the video for manual PiP before switching apps.
 
 ## Installation
 
@@ -79,6 +81,8 @@ Settings are stored per-origin in `chrome.storage.local`:
 |-----|-------|---------|
 | `{origin}:volume` | `0–100` (integer) | `"https://www.youtube.com:volume": 50` |
 | `{origin}:speed` | `25–400` (integer, speed * 100) | `"https://www.youtube.com:speed": 150` |
+| `{origin}:enabled` | `true` / `false` | Per-site opt-in; missing values default to disabled. |
+| `youtubeAutoPip` | `true` / unset | Global; default off. When `true`, auto Picture-in-Picture is enabled on YouTube only. |
 
 ### Why Monkey-Patching?
 
@@ -97,6 +101,20 @@ YouTube is a Single Page Application — clicking a video doesn't reload the pag
 1. **`yt-navigate-finish` event** — YouTube fires this custom DOM event on every client-side navigation. `content.js` listens for it and re-sends the saved volume/speed to `inject.js`.
 2. **Monkey-patched setters** — Even without the event, any attempt by YouTube to set volume/speed on the new video is intercepted by the patched setters in `inject.js`.
 3. **Live stream guard** — YouTube live streams keep their own playback rate because changing speed on live content can break playback behavior.
+
+### Auto Picture-in-Picture (YouTube)
+
+When **Auto PiP (YouTube only)** is turned on in the popup:
+
+1. `inject.js` registers Chrome’s `mediaSession` action `enterpictureinpicture` (main world).
+2. The current YouTube video is marked with Chrome’s `autopictureinpicture` hint and re-marked when YouTube swaps video elements.
+3. A small PiP button appears at the top-right of the YouTube video. Click it before switching apps to open manual PiP.
+4. On tab switch, Chrome may call the media-session handler if a video is playing — the extension then calls `video.requestPictureInPicture()`.
+5. Returning to the YouTube tab exits PiP only for tab-switch auto PiP. Manual PiP stays open until the user exits or expands the PiP window.
+6. The PiP window is the browser’s floating player (usually bottom-right first); the user can drag it freely. Position cannot be forced in code.
+7. **No autoplay on return** — If you pause inside PiP, returning to the tab keeps it paused (Chrome often tries to resume; we force-pause when needed).
+
+**Notes:** Off by default. Only runs on `*.youtube.com`. Chrome may show a one-time “allow automatic picture-in-picture” prompt for tab-switch auto PiP. Requires a recent Chrome with automatic PiP for media playback. App switching uses the manual on-video button because Chrome may block automatic app-switch PiP without a fresh page interaction.
 
 ### Keyboard Shortcuts
 

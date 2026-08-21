@@ -21,9 +21,9 @@ chrome.tabs.onActivated.addListener(function (activeInfo) {
       var speedKey = origin + ":speed";
       
       chrome.storage.local.get([enabledKey, speedKey], function (result) {
-        // Check if site is enabled (default true)
-        var enabled = result[enabledKey];
-        if (enabled === false) {
+        // Only show a badge for sites that were explicitly enabled.
+        var enabled = result[enabledKey] === true;
+        if (!enabled) {
           // Site is disabled, clear the badge
           chrome.action.setBadgeText({ text: "", tabId: activeInfo.tabId });
           return;

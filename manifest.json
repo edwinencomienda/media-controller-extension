@@ -3,7 +3,7 @@
   "name": "Media Controller",
   "version": "1.0",
   "description": "Control the volume of all videos and audio on any page.",
-  "permissions": ["activeTab", "storage", "scripting"],
+  "permissions": ["activeTab", "storage", "scripting", "tabs"],
   "icons": {
     "16": "icons/icon16.png",
     "48": "icons/icon48.png",

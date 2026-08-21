@@ -27,6 +27,10 @@ function sendSiteEnabled(enabled) {
   window.dispatchEvent(new CustomEvent("__vc_set_site_enabled", { detail: { enabled: enabled } }));
 }
 
+function sendYoutubeAutoPip(enabled) {
+  window.dispatchEvent(new CustomEvent("__vc_set_youtube_auto_pip", { detail: { enabled: enabled } }));
+}
+
 // Broadcast settings to all child iframes (cross-origin safe via postMessage).
 function broadcastToFrames(payload) {
   var iframes = document.querySelectorAll("iframe");
@@ -43,6 +47,7 @@ function applyPayload(payload) {
   if (payload.applyAll !== undefined) sendSpeedMode(payload.applyAll);
   if (payload.speed !== undefined) sendSpeed(payload.speed);
   if (payload.suppressSiteShortcuts !== undefined) sendSuppressSiteShortcuts(payload.suppressSiteShortcuts);
+  if (payload.youtubeAutoPip !== undefined) sendYoutubeAutoPip(payload.youtubeAutoPip);
 }
 
 chrome.runtime.onMessage.addListener(function (message) {
@@ -69,6 +74,10 @@ chrome.runtime.onMessage.addListener(function (message) {
   if (message.type === "SET_SUPPRESS_SITE_SHORTCUTS") {
     sendSuppressSiteShortcuts(message.enabled);
     payload.suppressSiteShortcuts = message.enabled;
+  }
+  if (message.type === "SET_YOUTUBE_AUTO_PIP") {
+    sendYoutubeAutoPip(message.enabled);
+    payload.youtubeAutoPip = message.enabled;
   }
   // Propagate to iframes so embedded players (YouTube, Vimeo, etc.) update too.
   if (IS_TOP_FRAME) broadcastToFrames(payload);
@@ -99,9 +108,9 @@ window.addEventListener("message", function (e) {
     // Child frame is asking for the top-frame's current settings.
     if (e.data.request === "settings") {
       var origin = window.location.origin;
-      chrome.storage.local.get([origin + ":enabled", origin + ":volume", origin + ":speed", "speedApplyAll", "suppressSiteShortcuts"], function (result) {
+      chrome.storage.local.get([origin + ":enabled", origin + ":volume", origin + ":speed", "speedApplyAll", "suppressSiteShortcuts", "youtubeAutoPip"], function (result) {
         var enabled = result[origin + ":enabled"];
-        if (enabled === undefined) enabled = true; // default enabled
+        if (enabled === undefined) enabled = false; // default disabled
         
         var volume = result[origin + ":volume"];
         if (volume === undefined) volume = 100;
@@ -117,6 +126,7 @@ window.addEventListener("message", function (e) {
           applyAll: applyAll,
           speed: applyAll ? speed / 100 : 1,
           suppressSiteShortcuts: result.suppressSiteShortcuts !== false,
+          youtubeAutoPip: result.youtubeAutoPip === true,
         };
         try {
           e.source.postMessage({ __vc: true, payload: payload }, "*");
@@ -164,6 +174,21 @@ document.addEventListener("yt-navigate-finish", function () {
   loadAndApply();
 });
 
+// Keep Auto PiP in sync across YouTube tabs when the popup toggles it
+chrome.storage.onChanged.addListener(function (changes) {
+  if (changes.youtubeAutoPip) {
+    var enabled = changes.youtubeAutoPip.newValue === true;
+    sendYoutubeAutoPip(enabled);
+    if (IS_TOP_FRAME) broadcastToFrames({ youtubeAutoPip: enabled });
+  }
+});
+
+// inject.js runs in the main world and may finish wiring its listeners after
+// our initial loadAndApply() event. Let it request a fresh settings push.
+window.addEventListener("__vc_request_settings", function () {
+  loadAndApply();
+});
+
 function loadAndApply() {
   if (!IS_TOP_FRAME) {
     // Child frames (e.g. YouTube iframe) inherit from the top frame,
@@ -175,10 +200,14 @@ function loadAndApply() {
   }
 
   var origin = window.location.origin;
-  chrome.storage.local.get([origin + ":enabled", origin + ":volume", origin + ":speed", "speedApplyAll", "suppressSiteShortcuts"], function (result) {
-    // Check if site is enabled (default to true)
+  chrome.storage.local.get([origin + ":enabled", origin + ":volume", origin + ":speed", "speedApplyAll", "suppressSiteShortcuts", "youtubeAutoPip"], function (result) {
+    // Check if site is enabled (default to false)
     var enabled = result[origin + ":enabled"];
-    if (enabled === undefined) enabled = true;
+    if (enabled === undefined) enabled = false;
+
+    // YouTube Auto PiP is independent of site volume/speed enable (default: off)
+    var youtubeAutoPip = result.youtubeAutoPip === true;
+    sendYoutubeAutoPip(youtubeAutoPip);
     
     // Send enabled state first
     sendSiteEnabled(enabled);
@@ -187,6 +216,7 @@ function loadAndApply() {
       // Site is disabled, don't apply any overrides
       // Clear the badge
       chrome.runtime.sendMessage({ type: "CLEAR_BADGE" }).catch(function(){});
+      broadcastToFrames({ enabled: enabled, youtubeAutoPip: youtubeAutoPip });
       return;
     }
 
@@ -218,6 +248,7 @@ function loadAndApply() {
       applyAll: applyAll,
       speed: applyAll ? speed / 100 : 1,
       suppressSiteShortcuts: suppress,
+      youtubeAutoPip: youtubeAutoPip,
     });
   });
 }

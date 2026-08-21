@@ -296,6 +296,25 @@
       font-size: 11px;
       color: #808090;
     }
+
+    .suppress-label-group {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      min-width: 0;
+      flex: 1;
+      padding-right: 8px;
+    }
+
+    .suppress-hint {
+      font-size: 10px;
+      color: #606070;
+      line-height: 1.3;
+    }
+
+    .suppress-section.hidden {
+      display: none;
+    }
   </style>
 </head>
 <body>
@@ -318,7 +337,7 @@
       <span>Enable on <span class="site-name" id="current-site">this site</span></span>
     </div>
     <label class="toggle">
-      <input type="checkbox" id="site-enabled" checked>
+      <input type="checkbox" id="site-enabled">
       <span class="toggle-slider"></span>
     </label>
   </div>
@@ -384,6 +403,18 @@
         <kbd>D</kbd>
       </div>
     </div>
+  </div>
+
+  <!-- Auto PiP (YouTube only) -->
+  <div class="suppress-section" id="auto-pip-section">
+    <div class="suppress-label-group">
+      <span class="suppress-label">Auto PiP (YouTube only)</span>
+      <span class="suppress-hint">Tab auto · video PiP button</span>
+    </div>
+    <label class="toggle">
+      <input type="checkbox" id="youtube-auto-pip">
+      <span class="toggle-slider"></span>
+    </label>
   </div>
 
   <!-- Block Site Shortcuts Toggle -->
